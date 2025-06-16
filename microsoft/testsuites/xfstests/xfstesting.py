@@ -115,7 +115,7 @@ def _deploy_azure_file_share(
     names: Dict[str, str],
     azure_file_share: Union[AzureFileShare, Nfs],
     allow_shared_key_access: bool = True,
-    enable_private_endpoint: bool = True,
+    enable_private_endpoint: bool = False,
     storage_account_sku: str = "Premium_LRS",
     storage_account_kind: str = "FileStorage",
     file_share_quota_in_gb: int = 100,
