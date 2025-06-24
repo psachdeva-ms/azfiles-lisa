@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import PurePath
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from dataclasses_json import dataclass_json
 
@@ -27,6 +27,8 @@ class FileUploaderTransformerSchema(DeploymentTransformerSchema):
     destination: str = ""
     # uploaded files
     files: List[str] = field(default_factory=list)
+    # optional source node information, use schema.RemoteNode
+    source_node: Optional[schema.RemoteNode] = None
 
 
 class FileUploaderTransformer(DeploymentTransformer):
@@ -66,20 +68,38 @@ class FileUploaderTransformer(DeploymentTransformer):
         copy = self._node.tools[RemoteCopy]
         uploaded_files: List[str] = []
 
-        self._log.debug(f"checking destination {runbook.destination}")
-        ls = self._node.tools[Ls]
-        if not ls.path_exists(runbook.destination):
-            self._log.debug(f"creating directory {runbook.destination}")
-            mkdir = self._node.tools[Mkdir]
-            mkdir.create_directory(runbook.destination)
-
-        for name in runbook.files:
-            local_path = PurePath(runbook.source) / name
-            remote_path = PurePath(runbook.destination)
-            self._log.debug(f"uploading file from '{local_path}' to '{remote_path}'")
-
-            copy.copy_to_remote(local_path, remote_path)
-            uploaded_files.append(name)
+        # If source_node is specified, use it as the source for remote-to-remote copy
+        if runbook.source_node:
+            from lisa.node import Node
+            src_conn = runbook.source_node.get_connection_info()
+            src_node = Node.create(connection_info=src_conn)
+            dest_node = self._node
+            for name in runbook.files:
+                src_path = PurePath(getattr(runbook.source_node, "path", "/")) / name
+                dest_path = PurePath(runbook.destination)
+                self._log.debug(f"remote-to-remote: '{src_path}' to '{dest_path}'")
+                copy.copy_between_remotes(
+                    src_node=src_node,
+                    src_path=src_path,
+                    dest_node=dest_node,
+                    dest_path=dest_path,
+                    recurse=False,
+                )
+                uploaded_files.append(name)
+        else:
+            # fallback to local-to-remote
+            self._log.debug(f"checking destination {runbook.destination}")
+            ls = self._node.tools[Ls]
+            if not ls.path_exists(runbook.destination):
+                self._log.debug(f"creating directory {runbook.destination}")
+                mkdir = self._node.tools[Mkdir]
+                mkdir.create_directory(runbook.destination)
+            for name in runbook.files:
+                local_path = PurePath(runbook.source) / name
+                remote_path = PurePath(runbook.destination)
+                self._log.debug(f"uploading file from '{local_path}' to '{remote_path}'")
+                copy.copy_to_remote(local_path, remote_path)
+                uploaded_files.append(name)
 
         result[UPLOADED_FILES] = uploaded_files
         return result
