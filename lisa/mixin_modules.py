@@ -87,5 +87,5 @@ import lisa.transformers.script_transformer  # noqa: F401
 import lisa.transformers.to_list  # noqa: F401
 import lisa.transformers.upgrade_packages  # noqa: F401
 from lisa.transformers.kernel_source_packager import KernelSourcePackager
-from lisa.transformers.kernel_source_packager import KernelSourcePackager
 from lisa.transformers.deb_package_installer import DEBPackageInstallerTransformer
+from lisa.transformers.storage_deployment_transformer import StorageDeploymentTransformer
