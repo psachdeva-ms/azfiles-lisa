@@ -78,6 +78,8 @@ _default_smb_testcases: str = (
     "generic/635 generic/637 generic/638 generic/639"
 )
 # Section : Global options
+_test_share_url = ""
+_scratch_share_url = ""
 _scratch_folder = "/mnt/scratch"
 _test_folder = "/mnt/test"
 
@@ -197,6 +199,7 @@ class Xfstesting(TestSuite):
     def before_case(self, log: Logger, **kwargs: Any) -> None:
         global _default_smb_mount, _default_smb_excluded_tests
         global _default_smb_testcases, _scratch_folder, _test_folder
+        global _test_share_url, _scratch_share_url
 
         node = kwargs["node"]
         if isinstance(node.os, Oracle) and (node.os.information.version <= "9.0.0"):
@@ -213,6 +216,11 @@ class Xfstesting(TestSuite):
         _default_smb_testcases = variables.get(
             "smb_testcases", _default_smb_testcases
         )
+        # check if the file endpoints are already provided
+        _file_share_urls = variables.get("file_share_urls", [])
+        if len(_file_share_urls) == 2:
+            _test_share_url, _scratch_share_url = _file_share_urls
+
         _scratch_folder = variables.get("scratch_folder", _scratch_folder)
         _test_folder = variables.get("test_folder", _test_folder)
 
@@ -599,15 +607,23 @@ class Xfstesting(TestSuite):
             f"-o {_default_smb_mount},"  # noqa: E231
             f"credentials=/etc/smbcredentials/lisa.cred"  # noqa: E231
         )
-        fs_url_dict: Dict[str, str] = _deploy_azure_file_share(
-            node=node,
-            environment=environment,
-            names={
-                _test_folder: file_share_name,
-                _scratch_folder: scratch_name,
-            },
-            azure_file_share=azure_file_share,
-        )
+        if not _test_share_url or not _scratch_share_url:
+            fs_url_dict: Dict[str, str] = _deploy_azure_file_share(
+                node=node,
+                environment=environment,
+                names={
+                    _test_folder: file_share_name,
+                    _scratch_folder: scratch_name,
+                },
+                azure_file_share=azure_file_share,
+            )
+        else:
+            # If the file share URLs are already provided, use them directly.
+            fs_url_dict = {
+                file_share_name: _test_share_url,
+                scratch_name: _scratch_share_url,
+            }
+        
         # Create Xfstest config
         xfstests.set_local_config(
             scratch_dev=fs_url_dict[scratch_name],
