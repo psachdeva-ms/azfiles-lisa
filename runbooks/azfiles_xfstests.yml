@@ -3,29 +3,40 @@ include:
   - path: ../microsoft/runbook/tiers/tier.yml
 variable:
   - name: test_name
-    value: default_test
+    value: "azurefiles_xfstests"
+  - name: subscription_id
+    value: ""
   - name: location
-    value: "westus3"
+    value: "centralindia"
   - name: keep_environment
-    value: "no"
+    value: "always"
+  - name: builder_resource_group_name
+    value: ""
   - name: resource_group_name
     value: ""
   - name: marketplace_image
-    value: ""
+    value: "Canonical:ubuntu-24_04-lts:server:latest"
   - name: shared_gallery
     value: ""
   - name: community_gallery_image
     value: ""
   - name: vhd
     value: ""
+  - name: builder_vm_size
+    value: "Standard_B32als_v2"
   - name: vm_size
-    value: ""
+    value: "Standard_B4als_v2"
+  - name: builder_deploy
+    value: false
   - name: deploy
     value: true
   - name: wait_delete
     value: false
   - name: concurrency
-    value: 5
+    value: 1
+  - name: builder_private_key_file
+    value: ""
+    is_secret: true
   - name: admin_private_key_file
     value: ""
     is_secret: true
@@ -35,8 +46,6 @@ variable:
   - name: azure_arm_access_token
     value: ""
     is_secret: true
-  - name: azcopy_path
-    value: ""
   - name: auth_type
     value: "default"
   - name: use_ipv6
@@ -53,6 +62,32 @@ variable:
     value: ""
   - name: source_address_prefixes
     value: ["4.194.0.0/16"]
+  - name: kernel_build
+    value: true
+  - name: build_vm_address
+    value: ""
+  - name: kernel_build_directory
+    value: "/mnt/code"
+  - name: kernel_repo
+    value: "https://github.com/sprasad-microsoft/smb3-kernel-client.git"
+  - name: kernel_repo_tag
+    value: "personal/sprasad/for-next"
+  - name: kernel_package_destination
+    value: "/media/packages"
+  - name: patch_repo
+    value: ""
+  - name: patch_ref
+    value: ""
+  - name: patch_file_pattern
+    value: ""
+  - name: test_tag
+    value: "kernelbuild"
+  - name: storage_account_name
+    value: "sprasadlisaazurefiles"
+  - name: deploy_file_shares
+    value: true
+  - name: file_share_urls
+    value: []
 concurrency: $(concurrency)
 notifier:
   - type: html
@@ -74,8 +109,6 @@ platform:
       use_ipv6: $(use_ipv6)
       source_address_prefixes: $(source_address_prefixes)
     requirement:
-      core_count:
-        min: 4
       azure:
         marketplace: $(marketplace_image)
         shared_gallery: $(shared_gallery)
@@ -83,6 +116,76 @@ platform:
         vhd: $(vhd)
         location: $(location)
         vm_size: $(vm_size)
+transformer:
+  - type: azure_deploy
+    name: builder_deploy
+    resource_group_name: $(builder_resource_group_name)
+    source_address_prefixes: $(source_address_prefixes)
+    private_key_file: $(builder_private_key_file)
+    requirement:
+      azure:
+        marketplace: $(marketplace_image)
+        shared_gallery: $(shared_gallery)
+        community_gallery_image: $(community_gallery_image)
+        vhd: $(vhd)
+        location: $(location)
+        vm_size: $(builder_vm_size)
+        osdisk_size_in_gb: 128
+    enabled: $(builder_deploy)
+    keep_environment: "always"
+    rename:
+      builder_deploy_address: build_vm_address
+      builder_deploy_resource_group_name: builder_resource_group_name
+  - type: kernel_source_packager
+    connection:
+      address: $(build_vm_address)
+      private_key_file: $(builder_private_key_file)
+    use_cache: true
+    cache_destination: "/default"
+    location:
+      type: repo
+      path: "/mnt/code"
+      cleanup_code: false
+      ref: $(kernel_repo_tag)
+      repo: $(kernel_repo)
+    enabled: $(kernel_build)
+    rename:
+      kernel_source_packager_package_path: kernel_package_destination
+  - type: azure_storage_deploy
+    phase: environment_connected
+    enabled: $(deploy_file_shares)
+    storage_account_name: $(storage_account_name)
+    resource_group_name: $(resource_group_name)
+    location: $(location)
+    sku: Premium_LRS
+    kind: FileStorage
+    enable_https_traffic_only: true
+    allow_shared_key_access: false
+    allow_blob_public_access: false
+    files:
+      - type: file_share
+        file_share_name: test_share
+        file_share_protocols: SMB
+        file_share_quota_in_gb: 100
+      - type: file_share
+        file_share_name: scratch_share
+        file_share_protocols: SMB
+        file_share_quota_in_gb: 100
+    rename:
+      azure_storage_deploy_file_share_urls: file_share_urls
+  - type: file_uploader
+    phase: environment_connected
+    source: $(kernel_package_destination)
+    destination: $(kernel_package_destination)
+    source_node:
+      type: remote
+      address: $(build_vm_address)
+      private_key_file: $(builder_private_key_file)
+  - type: deb_package_installer
+    phase: environment_connected
+    files:
+      - $(kernel_package_destination)
+    reboot: true
 testcase:
   - criteria:
       name: $(test_case_name)
