@@ -233,15 +233,25 @@ class Git(Tool):
         )
         return filter_ansi_escape(result.stdout).splitlines()
 
-    def get_latest_commit_id(self, cwd: pathlib.PurePath) -> str:
-        result = self.run(
-            "--no-pager log -n 1 --pretty=format:%h",
-            shell=True,
-            cwd=cwd,
-            force_run=True,
-            expected_exit_code=0,
-            expected_exit_code_failure_message="Failed to fetch latest commit id.",
-        )
+    def get_latest_commit_id(self, cwd: pathlib.PurePath, target_branch="") -> str:
+        if target_branch:
+            result = self.run(
+                f"--no-pager log -n 1 --pretty=format:%h origin/{target_branch}",
+                shell=True,
+                cwd=cwd,
+                force_run=True,
+                expected_exit_code=0,
+                expected_exit_code_failure_message="Failed to fetch latest commit id.",
+            )
+        else:
+            result = self.run(
+                "--no-pager log -n 1 --pretty=format:%h",
+                shell=True,
+                cwd=cwd,
+                force_run=True,
+                expected_exit_code=0,
+                expected_exit_code_failure_message="Failed to fetch latest commit id.",
+            )
         return filter_ansi_escape(result.stdout)
 
     def init_submodules(self, cwd: pathlib.PurePath) -> None:
@@ -392,6 +402,56 @@ class Git(Tool):
         }
 
         return result
+
+    def delete_branch(
+        self,
+        branch_name: str,
+        cwd: pathlib.PurePath,
+        force: bool = False,
+    ) -> None:
+        """
+        Deletes a local branch in the git repository at the given path.
+
+        :param branch_name: Name of the branch to delete.
+        :param cwd: Path to the git repository.
+        :param force: If True, force delete the branch (git branch -D).
+                      If False, use safe delete (git branch -d).
+        """
+        current_branch = self.get_current_branch(cwd=cwd)
+        if current_branch == branch_name:
+            # Switch to master/main before deleting the current branch
+            # Try 'master' first, then 'main'
+            for fallback in ["master", "main"]:
+                try:
+                    self.run(
+                        f"checkout {fallback}",
+                        cwd=cwd,
+                        force_run=True,
+                        no_info_log=True,
+                        no_error_log=True,
+                    ).assert_exit_code(
+                        message=f"failed to checkout fallback branch '{fallback}' before deleting '{branch_name}'."
+                    )
+                    break
+                except Exception:
+                    continue
+            else:
+                raise LisaException(
+                    f"Cannot delete branch '{branch_name}' because it is currently checked out, "
+                    "and neither 'master' nor 'main' could be checked out."
+                )
+
+        flag = "-D" if force else "-d"
+        result = self.run(
+            f"branch {flag} {branch_name}",
+            cwd=cwd,
+            force_run=True,
+            no_info_log=True,
+            no_error_log=True,
+        )
+        result.assert_exit_code(
+            message=f"failed to delete branch '{branch_name}'. {result.stdout}"
+        )
 
 
 class GitBisect(Git):
