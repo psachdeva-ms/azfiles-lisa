@@ -24,6 +24,8 @@ from lisa.util import (
 from lisa.util.logger import Logger, get_logger
 
 from .kernel_installer import BaseInstaller, BaseInstallerSchema
+from urllib.parse import urlparse
+import os
 
 
 @dataclass_json()
@@ -497,25 +499,53 @@ class RepoLocation(BaseLocation):
         if runbook.cleanup_code and self._node.shell.exists(code_path):
             self._node.shell.remove(code_path, True)
 
-        # create and give permission on code folder
-        self._node.execute(f"mkdir -p {code_path}", sudo=True)
-        self._node.execute(f"chmod -R 777 {code_path}", sudo=True)
-
-        self._log.info(f"cloning code from {runbook.repo} to {code_path}...")
         git = self._node.tools[Git]
-        code_path = git.clone(
-            url=runbook.repo,
-            cwd=code_path,
-            fail_on_exists=runbook.fail_on_code_exists,
-            auth_token=runbook.auth_token,
-            timeout=1800,
-        )
+        if not self._node.shell.exists(code_path):
+            # create and give permission on code folder
+            self._node.execute(f"mkdir -p {code_path}", sudo=True)
+            self._node.execute(f"chmod 0777 {code_path}", sudo=True)
 
+            self._log.info(f"cloning code from {runbook.repo} to {code_path}...")
+            code_path = git.clone(
+                url=runbook.repo,
+                cwd=code_path,
+                fail_on_exists=runbook.fail_on_code_exists,
+                auth_token=runbook.auth_token,
+                timeout=1800,
+            )
+        else:
+            # Check if a directory matching the repo name exists inside code_path
+            repo_name = os.path.splitext(os.path.basename(urlparse(runbook.repo).path.rstrip("/")))[0]
+            potential_path = code_path / repo_name
+            if self._node.shell.exists(potential_path):
+                code_path = potential_path
+                self._log.info(f"code already exists at {code_path}, skipping clone.")
+            else:
+                self._log.info(f"cloning code from {runbook.repo} to {code_path}...")
+                code_path = git.clone(
+                    url=runbook.repo,
+                    cwd=code_path,
+                    fail_on_exists=runbook.fail_on_code_exists,
+                    auth_token=runbook.auth_token,
+                    timeout=1800,
+                )
+        
         git.fetch(cwd=code_path)
 
         if runbook.ref:
+            # First delete the branches as we should be able to handle a diverged branches
+            try:
+                git.delete_branch(branch_name=runbook.ref, cwd=code_path, force=True)
+            except:
+                pass
+
+            try:
+                git.delete_branch(branch_name="lisa_temp_branch", cwd=code_path, force=True)
+            except:
+                pass
+
             self._log.info(f"checkout code from: '{runbook.ref}'")
-            git.checkout(ref=runbook.ref, cwd=code_path)
+            git.checkout(ref=runbook.ref, cwd=code_path, checkout_branch="lisa_temp_branch")
 
         latest_commit_id = git.get_latest_commit_id(cwd=code_path)
         self._log.info(f"Kernel HEAD is now at : {latest_commit_id}")
