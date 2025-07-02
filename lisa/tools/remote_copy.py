@@ -235,40 +235,47 @@ class RemoteCopy(Tool):
 
     def copy_between_remotes(
         self,
-        src_node: "Node",
+        src_node,
         src_path: PurePath,
-        dest_node: "Node",
+        dest_node,
         dest_path: PurePath,
         recurse: bool = False,
     ) -> None:
         """
-        Copy a file or directory from one remote node to another remote node using scp over SSH.
-        Only key-based authentication is supported for the source node.
-        The scp command is run on the destination node, pulling from the source node.
-        The source node's private key is copied to the destination node for the duration of the transfer.
+        Copy a file or directory from src_node to dest_node using scp.
+        The scp command is executed on the src_node, pushing to dest_node.
+        Only key-based authentication is supported.
         """
-        import tempfile
-        import os
-        src_info = src_node.connection_info()
-        src_user = src_info["username"]
-        src_addr = src_info["address"]
-        src_port = src_info.get("port", 22)
-        src_key = src_info.get("private_key_file")
-        scp_opts = f"-i {{key_path}} -P {src_port} -o StrictHostKeyChecking=no"
-        if recurse:
-            scp_opts += " -r"
-        src_path_str = str(src_path)
-        dest_path_str = str(dest_path)
-        # Copy the private key to the destination node (in a temp file)
-        with open(src_key, "r") as f:
-            key_content = f.read()
-        temp_key_path = f"/tmp/.lisa_temp_key_{os.getpid()}"
-        dest_node.shell.spawn(["bash", "-c", f"echo '{key_content}' > {temp_key_path} && chmod 600 {temp_key_path}"]).wait_for_result()
-        try:
-            scp_cmd = f"scp {scp_opts.format(key_path=temp_key_path)} {src_user}@{src_addr}:{src_path_str} {dest_path_str}"
-            dest_node.shell.spawn(["bash", "-c", scp_cmd]).wait_for_result()
-        finally:
-            dest_node.shell.spawn(["rm", "-f", temp_key_path]).wait_for_result()
+        # Ensure src_path and dest_path are strings
+        src_path = str(src_path)
+        dest_path = str(dest_path)
+
+        # Prepare scp command to run on src_node, pushing to dest_node
+        dest_user = dest_node.connection_info.username
+        dest_addr = dest_node.connection_info.address
+        dest_key = dest_node.connection_info.private_key_file
+
+        # Copy the dest_key to src_node (if not already present)
+        # Use a temporary file for the key on src_node
+        import posixpath
+        import uuid
+
+        tmp_key_name = f"/tmp/.lisa_dest_key_{uuid.uuid4().hex}"
+        src_node.shell.copy_to_remote(dest_key, tmp_key_name)
+
+        scp_opts = "-r" if recurse else ""
+        scp_cmd = (
+            f"scp {scp_opts} -i {tmp_key_name} -o StrictHostKeyChecking=no "
+            f"{src_path} {dest_user}@{dest_addr}:{dest_path}"
+        )
+        src_node.shell.run(
+            scp_cmd,
+            shell=True,
+            sudo=False,
+        )
+
+        # Clean up the temporary key file
+        src_node.shell.run(f"rm -f {tmp_key_name}", shell=True, sudo=True)
 
 
 class WindowsRemoteCopy(RemoteCopy):
