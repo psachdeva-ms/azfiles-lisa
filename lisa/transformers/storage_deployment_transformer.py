@@ -5,6 +5,7 @@ from lisa.transformers.deployment_transformer import DeploymentTransformer
 from lisa import schema
 from lisa.sut_orchestrator.azure.common import check_or_create_storage_account, get_or_create_file_share
 from lisa.util.logger import get_logger
+from lisa.sut_orchestrator.azure.transformers import _load_platform
 
 @dataclass_json
 @dataclass
@@ -42,11 +43,13 @@ class StorageDeploymentTransformer(DeploymentTransformer):
     def _internal_run(self) -> Dict[str, Any]:
         runbook: StorageDeploymentTransformerSchema = self.runbook
         log = get_logger("azure_storage_deploy")
+        platform = _load_platform(self._runbook_builder, self.type_name())
+
         # 1. Create/check storage account
         check_or_create_storage_account(
-            credential=self._node.platform.credential,
-            subscription_id=self._node.platform.subscription_id,
-            cloud=self._node.platform.cloud,
+            credential=platform.credential,
+            subscription_id=platform.subscription_id,
+            cloud=platform.cloud,
             account_name=runbook.storage_account_name,
             resource_group_name=runbook.resource_group_name,
             location=runbook.location,
