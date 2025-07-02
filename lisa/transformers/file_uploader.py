@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Type
 from dataclasses_json import dataclass_json
 
 from lisa import schema
+from lisa.node import Node, quick_connect
 from lisa.tools import Ls, Mkdir, RemoteCopy
 from lisa.transformers.deployment_transformer import (
     DeploymentTransformer,
@@ -56,11 +57,30 @@ class FileUploaderTransformer(DeploymentTransformer):
             raise ValueError("'source' must be provided.")
         if not runbook.destination:
             raise ValueError("'destination' must be provided.")
-        if not runbook.files:
-            raise ValueError("'files' must be provided.")
 
-        if not os.path.exists(runbook.source):
-            raise ValueError(f"source {runbook.source} doesn't exist.")
+        # If source_node is specified, check existence on remote node
+        if runbook.source_node:
+            src_node = quick_connect(
+                runbook.source_node, runbook.name
+            )
+            ls = src_node.tools[Ls]
+            if not ls.path_exists(runbook.source):
+                raise ValueError(f"source {runbook.source} doesn't exist on remote node.")
+            if ls.is_file(runbook.source):
+                runbook.files = [os.path.basename(runbook.source)]
+                runbook.source = PurePath(runbook.source).parent
+            else:
+                if not runbook.files:
+                    raise ValueError("'files' must be provided when source is a directory on remote node.")
+        else:
+            if not os.path.exists(runbook.source):
+                raise ValueError(f"source {runbook.source} doesn't exist.")
+            if os.path.isfile(runbook.source):
+                runbook.files = [os.path.basename(runbook.source)]
+                runbook.source = PurePath(runbook.source).parent
+            else:
+                if not runbook.files:
+                    raise ValueError("'files' must be provided when source is a directory.")
 
     def _internal_run(self) -> Dict[str, Any]:
         runbook: FileUploaderTransformerSchema = self.runbook
@@ -70,12 +90,12 @@ class FileUploaderTransformer(DeploymentTransformer):
 
         # If source_node is specified, use it as the source for remote-to-remote copy
         if runbook.source_node:
-            from lisa.node import Node
-            src_conn = runbook.source_node.get_connection_info()
-            src_node = Node.create(connection_info=src_conn)
+            src_node = quick_connect(
+                runbook.source_node, runbook.name
+            )
             dest_node = self._node
             for name in runbook.files:
-                src_path = PurePath(getattr(runbook.source_node, "path", "/")) / name
+                src_path = PurePath(runbook.source) / name
                 dest_path = PurePath(runbook.destination)
                 self._log.debug(f"remote-to-remote: '{src_path}' to '{dest_path}'")
                 copy.copy_between_remotes(
