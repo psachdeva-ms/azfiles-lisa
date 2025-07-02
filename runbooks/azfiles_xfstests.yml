@@ -25,7 +25,7 @@ variable:
   - name: builder_vm_size
     value: "Standard_B32als_v2"
   - name: vm_size
-    value: "Standard_B4als_v2"
+    value: ""
   - name: builder_deploy
     value: false
   - name: deploy
@@ -85,7 +85,7 @@ variable:
   - name: storage_account_name
     value: "sprasadlisaazurefiles"
   - name: deploy_file_shares
-    value: true
+    value: false
   - name: file_share_urls
     value: []
 concurrency: $(concurrency)
@@ -116,6 +116,7 @@ platform:
         vhd: $(vhd)
         location: $(location)
         vm_size: $(vm_size)
+      core_count: 4
 transformer:
   - type: azure_deploy
     name: builder_deploy
@@ -175,8 +176,9 @@ transformer:
       azure_storage_deploy_file_share_urls: file_share_urls
   - type: file_uploader
     phase: environment_connected
+    enabled: false
     source: $(kernel_package_destination)
-    destination: $(kernel_package_destination)
+    destination: "/tmp/packages"
     source_node:
       type: remote
       address: $(build_vm_address)
@@ -184,7 +186,7 @@ transformer:
   - type: deb_package_installer
     phase: environment_connected
     files:
-      - $(kernel_package_destination)
+      - "/tmp/packages/*.deb"
     reboot: true
 testcase:
   - criteria:
