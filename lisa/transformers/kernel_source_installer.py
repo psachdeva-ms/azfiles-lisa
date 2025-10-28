@@ -292,6 +292,7 @@ class SourceInstaller(BaseInstaller):
         code_path: PurePath,
         kconfig_file: str,
         kernel_version: VersionInfo,
+        skip_plain_make: bool = False,
     ) -> None:
         self._log.info("building code...")
 
@@ -372,9 +373,9 @@ class SourceInstaller(BaseInstaller):
 
         make = node.tools[Make]
         make.make(arguments="olddefconfig", cwd=code_path)
-
+        if not skip_plain_make:
         # set timeout to 2 hours
-        make.make(arguments="", cwd=code_path, timeout=60 * 60 * 2)
+            make.make(arguments="", cwd=code_path, timeout=60 * 60 * 2)
 
     def _fix_mirrorlist_to_vault(self, node: Node) -> None:
         node.execute(
@@ -419,12 +420,16 @@ class SourceInstaller(BaseInstaller):
                     "cpio",
                     "flex",
                     "libelf-dev",
+                    "libdw-dev",
                     "libncurses5-dev",
                     "xz-utils",
                     "libssl-dev",
                     "bc",
                     "ccache",
                     "zstd",
+                    "fakeroot",
+                    "dpkg-dev",
+                    "debhelper-compat",
                 ]
             )
         elif isinstance(os, CBLMariner):

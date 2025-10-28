@@ -1,0 +1,79 @@
+name: $(test_name)
+# test_project: $(test_project)
+# test_pass: $(test_pass)
+tags:
+  - $(test_tag)
+include:
+  - path: "./azure-vhd.yml"
+extension:
+  - ../../microsoft/testsuites/
+variable:
+  - name: source_address_prefixes
+    value: ["4.194.0.0/16"]
+  - name: subscription_id
+    value: "eaa00e3e-23b5-406d-9073-a2b39ca8947d"
+  - name: kernel_repo
+    value: "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+  - name: kernel_repo_tag
+    value: "master"
+  - name: test_tag
+    value: "kernel_cache_demo"
+  - name: build_vm_address
+    value: "4.236.49.217"
+  - name: build_vm_resource_group_name
+    value: "azstridc-interns-2025"
+  - name: location
+    value: "westus3"
+  - name: HDFSOwner
+    value: "t-sakshsingh"
+  - name: vm_size
+    value: ""
+  - name: test_name
+    value: "ubuntu-kernelcachetest"
+  # - name: test_project
+  #   value: "Adhoc Test"
+  # - name: test_pass
+  #   value: "Adhoc Test"
+  - name: keep_environment
+    value: "always"
+  - name: azure_deploy_address
+    value: ""
+  - name: azure_deploy_resource_group_name
+    value: "azstridc-interns-2025"
+  - name: admin_private_key_file
+    value: C:\Users\t-sakshsingh\.ssh\id_rsa
+  - name: marketplace_image
+    value: ""
+  - name: vhd
+    value: ""
+  - name: storage_account_name
+    value: ""
+  - name: custom_blob_name
+    value: ""
+transformer:
+  - type: azure_deploy
+    name: build_vm
+    resource_group_name: $(build_vm_resource_group_name)
+    requirement:
+      azure:
+        marketplace: $(marketplace_image)
+        # vm_size: 
+        location: $(location)
+      core_count: 16
+    resource_group_tags:
+      HDFSOwner: $(HDFSOwner)
+    source_address_prefixes: $(source_address_prefixes)
+    enabled: false
+  - type: kernel_installer
+    connection:
+      address: $(build_vm_address)
+      private_key_file: $(admin_private_key_file)
+    installer:
+      type: kernel_source_packager
+      use_cache: false
+      location: 
+        type: repo
+        path: "/mnt/code"
+        cleanup_code: false
+        ref: $(kernel_repo_tag)
+        repo: $(kernel_repo)
