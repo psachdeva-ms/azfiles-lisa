@@ -149,6 +149,7 @@ from .who import Who
 from .whoami import Whoami
 from .windows_feature import WindowsFeatureManagement
 from .wsl import Wsl
+from .dpkg import Dpkg
 
 __all__ = [
     "AptAddRepository",
