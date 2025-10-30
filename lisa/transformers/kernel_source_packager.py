@@ -18,6 +18,11 @@ from lisa.transformers.deployment_transformer import (
 @dataclass
 class KernelSourcePackagerSchema(DeploymentTransformerSchema):
     use_cache: bool = field(default=False)
+
+    cache_destination: str = field(
+        default="/default", 
+        metadata={"required": False})
+    
     location: Optional[BaseLocationSchema] = field(
         default=None, metadata={"required": True}
     )
@@ -91,7 +96,7 @@ class KernelSourcePackager(DeploymentTransformer):
         self,
         commit_id: str,
         kernel_version: str,
-        cache_json_path: str = "/default/cache/kernel_cache.json"
+        cache_json_path: str = None
     ) -> bool:
         """
         Checks the cache JSON for an entry matching the given commit_id and kernel_version.
@@ -99,6 +104,10 @@ class KernelSourcePackager(DeploymentTransformer):
         Returns True if valid .deb package is present, else False.
         """
         node = self._node
+        runbook: KernelSourcePackagerSchema = self.runbook
+        if cache_json_path is None:
+            cache_json_path = f"{runbook.cache_destination}/cache/kernel_cache.json"
+
         try:
             cache_content = node.execute(f"cat {cache_json_path}", shell=True)
             cache = json.loads(cache_content.stdout)
@@ -127,7 +136,7 @@ class KernelSourcePackager(DeploymentTransformer):
 
     def _update_cache(
         self,
-        cache_json_path: str = "/default/cache/kernel_cache.json",
+        cache_json_path: str = None,
         metadata: Optional[Dict[str, Any]] = None,
         commit_id: Optional[str] = None,
         max_cache_size: int = 100,
@@ -139,6 +148,9 @@ class KernelSourcePackager(DeploymentTransformer):
         Returns the package_paths of the updated or created entry, or None if not found.
         """
         node = self._node
+        runbook: KernelSourcePackagerSchema = self.runbook
+        if cache_json_path is None:
+            cache_json_path = f"{runbook.cache_destination}/cache/kernel_cache.json"
         now = datetime.utcnow().isoformat() + "Z"
         # Load cache
         try:
@@ -261,7 +273,7 @@ class KernelSourcePackager(DeploymentTransformer):
 
 
         # 7. Move the .deb file(s) to the cache/packages/<commit_id> directory
-        cache_root = "/default/cache"
+        cache_root = f"{runbook.cache_destination}/cache"
         packages_dir = f"{cache_root}/packages"
         commit_dir = f"{packages_dir}/commit_id-{commit_id}"
         if not node.shell.exists(commit_dir):
@@ -295,4 +307,3 @@ class KernelSourcePackager(DeploymentTransformer):
             raise Exception("No main linux-image .deb found in built packages.")
         return image_deb
 
-        
