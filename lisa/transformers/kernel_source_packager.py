@@ -1,34 +1,43 @@
-from lisa import schema
-from lisa.transformer import Transformer
-from lisa.transformers.kernel_source_installer import SourceInstaller, SourceInstallerSchema
-import json
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Type, cast
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
+import json
 import os
-from pathlib import PurePosixPath
-from lisa.transformers.kernel_source_installer import BaseLocationSchema
+from typing import Dict, Any, Optional, List, Type
 
+from lisa import schema
+# from lisa.transformer import Transformer
 from lisa.transformers.deployment_transformer import (
     DeploymentTransformer,
     DeploymentTransformerSchema,
 )
+from lisa.transformers.kernel_source_installer import (
+    BaseLocation,
+    BaseLocationSchema,
+    SourceInstaller,
+    SourceInstallerSchema
+)
+from lisa.util import subclasses
+from pathlib import PurePath
+
 @dataclass_json()
 @dataclass
 class KernelSourcePackagerSchema(DeploymentTransformerSchema):
     use_cache: bool = field(default=False)
 
     cache_destination: str = field(
-        default="/default", 
+        default="/default",
         metadata={"required": False})
-    
+
     location: Optional[BaseLocationSchema] = field(
         default=None, metadata={"required": True}
     )
-    
+
 
 class KernelSourcePackager(DeploymentTransformer):
+    _package_dir = "package_dir"
+    _packages = "packages"
+
     @classmethod
     def type_name(cls) -> str:
         return "kernel_source_packager"
@@ -36,20 +45,46 @@ class KernelSourcePackager(DeploymentTransformer):
     @classmethod
     def type_schema(cls) -> Type[schema.TypedSchema]:
         return KernelSourcePackagerSchema
-    
+
     @property
     def _output_names(self) -> List[str]:
-        return ["package_path"]
+        return [
+            self._package_dir,
+            self._packages,
+        ]
 
-    
-    def _get_location_factory(self):
-        from lisa.util import subclasses
-        from lisa.transformers.kernel_source_installer import BaseLocation
-        return subclasses.Factory[BaseLocation](BaseLocation)
-    
+    def _information(self, package_dir: str, package_paths: str) -> Dict[str, Any]:
+        image = False
+        headers = False
+        libc_dev = False
+        packages = []
+        for package_name in package_paths:
+            if not package_name.endswith(".deb"):
+                continue;
+            if "linux-image" in package_name:
+                if not "dbg" in package_name:
+                    image = True
+                packages.append(PurePath(package_name).name)
+            elif "linux-headers" in package_name:
+                headers = True
+                packages.append(PurePath(package_name).name)
+            elif "libc-dev" in package_name:
+                libc_dev = True
+                packages.append(PurePath(package_name).name)
+
+        return {
+            'necessary_packages_exist': image and headers and libc_dev,
+            'directory': package_dir,
+            'packages': packages,
+        }
+
     def _internal_run(self) -> Dict[str, Any]:
         runbook: KernelSourcePackagerSchema = self.runbook
+        results: Dict[str, Any] = dict()
+        assert runbook.location, "the repo must be defined"
         self._log.info(f"use_cache value: {runbook.use_cache} (type: {type(runbook.use_cache)})")
+
+        node = self._node
 
         # Use SourceInstaller logic for build steps
         source_installer_runbook = SourceInstallerSchema(
@@ -57,46 +92,65 @@ class KernelSourcePackager(DeploymentTransformer):
         )
         source_installer = SourceInstaller(
             runbook=source_installer_runbook,
-            node=self._node,
+            node=node,
             parent_log=self._log,
         )
 
-            # 1. Clone and checkout the source to get the actual commit_id and kernel_version
-        factory = self._get_location_factory()
-        
+        source_installer._install_build_tools(node)
+
+        # 1. Clone and checkout the source to get the actual commit_id and kernel_version
+        factory = subclasses.Factory[BaseLocation](BaseLocation)
         source = factory.create_by_runbook(
-            runbook=runbook.location, node=self._node, parent_log=self._log
+            runbook=runbook.location, node=node, parent_log=self._log
         )
         self._code_path = source.get_source_code()
+        assert node.shell.exists(self._code_path), \
+            f"cannot find code path: {self._code_path}"
+        self._log.info(f"kernel code path: {self._code_path}")
+
         git = self._node.tools["Git"]
         commit_id = git.get_latest_commit_id(cwd=self._code_path)
 
         # 2. Get kernel version
-        result = self._node.execute("make kernelversion 2>/dev/null", cwd=self._code_path, shell=True)
+        result = node.execute("make kernelversion 2>/dev/null",
+                                    cwd=self._code_path, shell=True)
         result.assert_exit_code(0, f"failed on get kernel version: {result.stdout}")
         kernel_version = result.stdout.strip()
 
+        ret = None
         if runbook.use_cache:
             self._log.info("Checking for cached kernel packages...")
             if self._check_cache(commit_id, kernel_version):
                 self._log.info("Cache hit: using cached package.")
-                package_path = self._update_cache(commit_id=commit_id)
-                return {"package_path" : package_path}
-                
+                ret = self._update_cache(commit_id=commit_id)
             else:
                 self._log.info("Cache miss: building and packaging kernel.")
-                package_path = self._build_and_package(source_installer, commit_id, kernel_version)
-                return {"package_path" : package_path}
+                ret = self._build_and_package(source_installer,
+                                                       commit_id, kernel_version)
         else:
             self._log.info("No-cache mode: building and packaging kernel.")
-            package_path = self._build_and_package(source_installer, commit_id, kernel_version)
-            return {"package_path" : package_path}
+            ret = self._build_and_package(source_installer,
+                                                   commit_id, kernel_version)
+
+        if (ret is None):
+            raise Exception("No images retrieved. kernel_source_packager_error")
+        if ret['necessary_packages_exist']:
+            cache_dir: str = ret['directory']
+            package_names: [str] = ret['packages']
+            results = {
+                self._package_dir: cache_dir,
+                self._packages: package_names,
+            }
+        else:
+            results = {}
+
+        return results
 
     def _check_cache(
         self,
         commit_id: str,
         kernel_version: str,
-        cache_json_path: str = None
+        cache_json_path: str = ""
     ) -> bool:
         """
         Checks the cache JSON for an entry matching the given commit_id and kernel_version.
@@ -105,7 +159,7 @@ class KernelSourcePackager(DeploymentTransformer):
         """
         node = self._node
         runbook: KernelSourcePackagerSchema = self.runbook
-        if cache_json_path is None:
+        if len(cache_json_path) == 0:
             cache_json_path = f"{runbook.cache_destination}/cache/kernel_cache.json"
 
         try:
@@ -127,8 +181,9 @@ class KernelSourcePackager(DeploymentTransformer):
                 # Check that at least one .deb file exists
                 for package_path in package_paths:
                     if (
-                        package_path.endswith(".deb")
-                        and node.execute(f"test -f {package_path}", shell=True).exit_code == 0
+                            package_path.endswith(".deb") and
+                            node.execute(f"test -f{package_path}",
+                                         shell=True).exit_code == 0
                     ):
                         return True
                 return False
@@ -136,7 +191,7 @@ class KernelSourcePackager(DeploymentTransformer):
 
     def _update_cache(
         self,
-        cache_json_path: str = None,
+        cache_json_path: str = "",
         metadata: Optional[Dict[str, Any]] = None,
         commit_id: Optional[str] = None,
         max_cache_size: int = 100,
@@ -149,12 +204,12 @@ class KernelSourcePackager(DeploymentTransformer):
         """
         node = self._node
         runbook: KernelSourcePackagerSchema = self.runbook
-        if cache_json_path is None:
+        if len(cache_json_path) == 0:
             cache_json_path = f"{runbook.cache_destination}/cache/kernel_cache.json"
         now = datetime.utcnow().isoformat() + "Z"
         # Load cache
         try:
-            if node.shell.exists(cache_json_path):
+            if node.shell.exists(PurePath(cache_json_path)):
                 cache_content = node.execute(f"cat {cache_json_path}", shell=True)
                 cache: List[Dict[str, Any]] = json.loads(cache_content.stdout)
             else:
@@ -168,7 +223,8 @@ class KernelSourcePackager(DeploymentTransformer):
 
         if metadata:
             # Remove any existing entry with the same commit_id
-            cache = [entry for entry in cache if entry.get("commit_id") != metadata.get("commit_id")]
+            cache = [entry for entry in cache if entry.get("commit_id") !=
+                     metadata.get("commit_id")]
             # Set last_used_time
             metadata["last_used_time"] = now
             # Insert new entry at the top
@@ -177,7 +233,8 @@ class KernelSourcePackager(DeploymentTransformer):
             # Trim cache if over max size
             if len(cache) > max_cache_size:
                 removed = cache.pop()
-                self._log.info(f"Cache full. Removed oldest entry: {removed.get('commit_id', 'unknown')}")
+                self._log.info(f"Cache full. Removed oldest entry: \
+                {removed.get('commit_id', 'unknown')}")
             self._log.info("Created new entry in cache.")
             updated = True
 
@@ -202,18 +259,20 @@ class KernelSourcePackager(DeploymentTransformer):
                 node.execute(f"echo '{cache_str}' | sudo tee {cache_json_path}", shell=True)
             except Exception as e:
                 self._log.error(f"Failed to write cache: {e}")
-        
+
         # Find the main kernel image .deb (not headers or dbg)
         if not package_paths:
-            raise Exception("No package_paths found in cache for the given commit_id.")
-        image_deb = next((p for p in package_paths if "linux-image" in p and "dbg" not in p), None)
-        if not image_deb:
-            raise Exception("No main linux-image .deb found in built packages.")
-        return image_deb
+            raise Exception("No package_paths found in cache for the given \
+            commit_id.")
 
-       
+        return self._information(
+            f"{runbook.cache_destination}/cache/packages/commit_id-{commit_id}",
+            package_paths
+        )
 
-    def _build_and_package(self, source_installer, commit_id: str, kernel_version: str) -> str:
+
+    def _build_and_package(self, source_installer, commit_id: str,
+                           kernel_version: str) -> Dict[str, Any]:
         """
         Builds the kernel from source (using already cloned and checked-out code),
         creates a deb package, collects metadata, moves the package to a commit-id-named folder,
@@ -230,7 +289,8 @@ class KernelSourcePackager(DeploymentTransformer):
         source_installer._install_build_tools(node)
 
         # 2. Use the already set self._code_path (repo is already cloned and checked out)
-        assert node.shell.exists(self._code_path), f"cannot find code path: {self._code_path}"
+        assert node.shell.exists(self._code_path), f"cannot find code path: \
+							{self._code_path}"
         self._log.info(f"kernel code path: {self._code_path}")
 
         # 3. Apply code modifications/patches if any (reuse SourceInstaller)
@@ -243,7 +303,8 @@ class KernelSourcePackager(DeploymentTransformer):
             current_branch = git.get_current_branch(cwd=self._code_path)
             if current_branch != expected_branch:
                 raise Exception(
-                    f"Kernel source is on branch '{current_branch}', expected '{expected_branch}'."
+                    f"Kernel source is on branch '{current_branch}', expected \
+                    '{expected_branch}'."
                 )
             self._log.info(f"Verified kernel source is on branch '{current_branch}'.")
 
@@ -254,7 +315,7 @@ class KernelSourcePackager(DeploymentTransformer):
             code_path=self._code_path,
             kconfig_file=kconfig_file,
             kernel_version=kernel_version,
-            skip_plain_make=True,  # Skip plain make, we will use make deb-pkg  
+            skip_plain_make=True,  # Skip plain make, we will use make deb-pkg
         )
 
         # 5. Package the kernel as a DEB package
@@ -262,7 +323,6 @@ class KernelSourcePackager(DeploymentTransformer):
         make.make(arguments="bindeb-pkg", cwd=self._code_path, timeout=60*60*2)
 
         # 6. Find the generated .deb package(s)
-        
         deb_dir = str(self._code_path.parent)
         result = node.execute(f'ls {deb_dir}/*.deb', shell=True)
         if result.exit_code != 0:
@@ -271,12 +331,11 @@ class KernelSourcePackager(DeploymentTransformer):
         if not deb_files:
             raise Exception("No .deb package was generated in the kernel build process.")
 
-
         # 7. Move the .deb file(s) to the cache/packages/<commit_id> directory
         cache_root = f"{runbook.cache_destination}/cache"
         packages_dir = f"{cache_root}/packages"
         commit_dir = f"{packages_dir}/commit_id-{commit_id}"
-        if not node.shell.exists(commit_dir):
+        if not node.shell.exists(PurePath(commit_dir)):
             node.execute(f"sudo mkdir -p {commit_dir}", shell=True)
             node.execute(f"sudo chmod 777 {commit_dir}", shell=True)
 
@@ -300,10 +359,4 @@ class KernelSourcePackager(DeploymentTransformer):
         }
 
         # 9. Update the cache and return the first package path
-        self._update_cache(metadata=metadata)
-        # Find the main kernel image .deb (not headers or dbg)
-        image_deb = next((p for p in package_paths if "linux-image" in p and "dbg" not in p), None)
-        if not image_deb:
-            raise Exception("No main linux-image .deb found in built packages.")
-        return image_deb
-
+        return self._update_cache(metadata=metadata)

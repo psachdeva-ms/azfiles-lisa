@@ -209,13 +209,10 @@ class Xfstesting(TestSuite):
         variables: Dict[str, Any] = kwargs["variables"]
         # check for overrides. pass variables with property case_visible: True
         # in runbook
-        _default_smb_mount = variables.get("smb_mount_opts", _default_smb_mount)
-        _default_smb_excluded_tests = variables.get(
-            "smb_excluded_tests", _default_smb_excluded_tests
-        )
-        _default_smb_testcases = variables.get(
-            "smb_testcases", _default_smb_testcases
-        )
+        _default_smb_mount = variables.get("smb_mount_opts") or _default_smb_mount
+        _default_smb_excluded_tests = variables.get("smb_excluded_tests") or _default_smb_excluded_tests
+        _default_smb_testcases = variables.get("smb_testcases") or _default_smb_testcases
+
         # check if the file endpoints are already provided
         _file_share_urls = variables.get("file_share_urls", [])
         if len(_file_share_urls) == 2:
@@ -579,7 +576,7 @@ class Xfstesting(TestSuite):
         and use access key // ntlmv2 for authentication.
         """,
         requirement=simple_requirement(
-            min_core_count=16,
+            min_core_count=4,
             supported_platform_type=[AZURE, HYPERV],
             unsupported_os=[BSD, Windows],
         ),
@@ -623,7 +620,7 @@ class Xfstesting(TestSuite):
                 file_share_name: _test_share_url,
                 scratch_name: _scratch_share_url,
             }
-        
+
         # Create Xfstest config
         xfstests.set_local_config(
             scratch_dev=fs_url_dict[scratch_name],

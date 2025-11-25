@@ -5,13 +5,13 @@ variable:
   - name: test_name
     value: "azurefiles_xfstests"
   - name: subscription_id
-    value: "1a55ef16-6bc5-43da-b0ac-efdc2f56f1a8"
+    value: ""
   - name: location
-    value: "centralindia"
-  - name: keep_environment
+    value: ""
+  - name: keep_build_env
     value: "always"
-  - name: builder_resource_group_name
-    value: "sprasad-lisa-builder-rg"
+  - name: keep_test_env
+    value: "failed"
   - name: resource_group_name
     value: ""
   - name: marketplace_image
@@ -24,21 +24,20 @@ variable:
     value: ""
   - name: builder_vm_size
     value: "Standard_B32als_v2"
+  - name: test_vm_name
+    value: ""
   - name: vm_size
     value: ""
   - name: builder_deploy
     value: false
-  - name: deploy
+  - name: test_env_deploy
     value: true
   - name: wait_delete
     value: false
   - name: concurrency
     value: 1
-  - name: builder_private_key_file
-    value: "C:/Users/sprasad/Downloads/ssh_keys/sprasad-lisa.pem"
-    is_secret: true
   - name: admin_private_key_file
-    value: "C:/Users/sprasad/Downloads/ssh_keys/sprasad-lisa.pem"
+    value: ""
     is_secret: true
   - name: admin_password
     value: ""
@@ -52,26 +51,26 @@ variable:
     value: false
   - name: test_case_name
     value: "verify_azure_file_share"
-  - name: azcopy_path
-    value: "C:\\temp\\azcopy.exe"
   - name: smb_mount_opts
     is_case_visible: true
     value: ""
   - name: smb_testcases
     is_case_visible: true
     value: ""
-  - name: source_address_prefixes
-    value: ["4.194.0.0/16"]
+  - name: azcopy_path
+    value: ""
+  - name: source_address_prefix
+    value: "4.194.0.0/16"
   - name: kernel_build
-    value: true
+    value: false
   - name: build_vm_address
     value: ""
   - name: kernel_build_directory
     value: "/mnt/code"
   - name: kernel_repo
-    value: "https://github.com/sprasad-microsoft/smb3-kernel-client.git"
+    value: "https://github.com/torvalds/linux.git"
   - name: kernel_repo_tag
-    value: "personal/sprasad/for-next"
+    value: "master"
   - name: kernel_package_destination
     value: "/media/packages"
   - name: patch_repo
@@ -81,13 +80,23 @@ variable:
   - name: patch_file_pattern
     value: ""
   - name: test_tag
-    value: "kernelbuild"
+    value: ""
   - name: storage_account_name
-    value: "sprasadlisaazurefiles"
+    value: ""
   - name: deploy_file_shares
-    value: false
+    value: true
   - name: file_share_urls
     value: []
+  - name: enable_debpkg_transfer
+    value: false
+  - name: kernel_src_pkger_package_dir
+    value: ""
+  - name: kernel_src_pkger_packages
+    value: []
+  - name: file_uploader_local_path
+    value: ""
+  - name: file_uploader_uploaded_files
+    value: ""
 concurrency: $(concurrency)
 notifier:
   - type: html
@@ -96,18 +105,19 @@ platform:
   - type: azure
     admin_private_key_file: $(admin_private_key_file)
     admin_password: $(admin_password)
-    keep_environment: $(keep_environment)
+    keep_environment: $(keep_test_env)
     azure:
       credential:
         type: $(auth_type)
         token: $(azure_arm_access_token)
       resource_group_name: $(resource_group_name)
-      deploy: $(deploy)
+      deploy: $(test_env_deploy)
       subscription_id: $(subscription_id)
       wait_delete: $(wait_delete)
       azcopy_path: $(azcopy_path)
       use_ipv6: $(use_ipv6)
-      source_address_prefixes: $(source_address_prefixes)
+      source_address_prefixes:
+        - $(source_address_prefix)
     requirement:
       azure:
         marketplace: $(marketplace_image)
@@ -115,14 +125,17 @@ platform:
         community_gallery_image: $(community_gallery_image)
         vhd: $(vhd)
         location: $(location)
+        name: $(test_vm_name)
         vm_size: $(vm_size)
+        osdisk_size_in_gb: 128
       core_count: 4
 transformer:
   - type: azure_deploy
     name: builder_deploy
-    resource_group_name: $(builder_resource_group_name)
-    source_address_prefixes: $(source_address_prefixes)
-    private_key_file: $(builder_private_key_file)
+    resource_group_name: $(resource_group_name)
+    source_address_prefixes:
+      - $(source_address_prefix)
+    private_key_file: $(admin_private_key_file)
     requirement:
       azure:
         marketplace: $(marketplace_image)
@@ -133,25 +146,24 @@ transformer:
         vm_size: $(builder_vm_size)
         osdisk_size_in_gb: 128
     enabled: $(builder_deploy)
-    keep_environment: "always"
+    keep_environment: $(keep_build_env)
     rename:
+      builder_deploy_username: build_vm_username
       builder_deploy_address: build_vm_address
-      builder_deploy_resource_group_name: builder_resource_group_name
   - type: kernel_source_packager
+    name: kernel_src_pkger
     connection:
       address: $(build_vm_address)
-      private_key_file: $(builder_private_key_file)
+      private_key_file: $(admin_private_key_file)
     use_cache: true
     cache_destination: "/default"
-    location: 
+    location:
       type: repo
       path: "/mnt/code"
       cleanup_code: false
       ref: $(kernel_repo_tag)
       repo: $(kernel_repo)
     enabled: $(kernel_build)
-    rename:
-      kernel_source_packager_package_path: kernel_package_destination
   - type: azure_storage_deploy
     phase: environment_connected
     enabled: $(deploy_file_shares)
@@ -161,32 +173,39 @@ transformer:
     sku: Premium_LRS
     kind: FileStorage
     enable_https_traffic_only: true
-    allow_shared_key_access: false
+    allow_shared_key_access: true
     allow_blob_public_access: false
     files:
       - type: file_share
-        file_share_name: test_share
+        file_share_name: test-share
         file_share_protocols: SMB
         file_share_quota_in_gb: 100
       - type: file_share
-        file_share_name: scratch_share
+        file_share_name: scratch-share
         file_share_protocols: SMB
         file_share_quota_in_gb: 100
     rename:
       azure_storage_deploy_file_share_urls: file_share_urls
   - type: file_uploader
     phase: environment_connected
-    enabled: false
-    source: $(kernel_package_destination)
-    destination: "/tmp/packages"
+    enabled: $(enable_debpkg_transfer)
+    source: $(kernel_src_pkger_package_dir)
+    destination: "/home/lisatest/kernels"
+    files: $(kernel_src_pkger_packages)
+    try_scp: false
     source_node:
       type: remote
+      user: "lisatest"
       address: $(build_vm_address)
-      private_key_file: $(builder_private_key_file)
+      private_key_file: $(admin_private_key_file)
+    local_path: $(file_uploader_local_path)
   - type: deb_package_installer
+    depends_on:
+      - file_uploader
+    enabled: $(enable_debpkg_transfer)
+    directory: "/home/lisatest/kernels"
     phase: environment_connected
-    files: 
-      - "/tmp/packages/*.deb"
+    files: $(file_uploader_uploaded_files)
     reboot: true
 testcase:
   - criteria:
