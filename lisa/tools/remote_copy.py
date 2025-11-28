@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Type
 from lisa.executable import Tool
 from lisa.tools.chown import Chown
 from lisa.tools.cp import Cp
+from lisa.tools.chmod import Chmod
 from lisa.tools.ls import Ls
 from lisa.tools.mkdir import Mkdir
 from lisa.tools.rm import Rm
@@ -251,40 +252,48 @@ class RemoteCopy(Tool):
         src_path_str = str(src_path)
         dest_path_str = str(dest_path)
 
-        # Prepare scp command to run on src_node, pushing to dest_node
-        src_connection = src_node.connection_info
-        src_user = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_USERNAME]
-        src_address = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_ADDRESS]
-        ssh_key = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_PRIVATE_KEY_FILE]
-
+        # get the node details for scp command
         dest_connection = dest_node.connection_info
-        assert ssh_key
+        dest_user = dest_connection['username']
+        dest_addr = dest_connection['address']
+        dest_key = dest_connection['private_key_file']
 
         # Copy the dest_key to src_node (if not already present)
         # Use a temporary file for the key on src_node
 
-        tmp_key_name = f"/tmp/.lisa_dest_key"
-        self.copy_to_remote(PurePath(ssh_key), PurePath(tmp_key_name))
+        tmp_key_name = "/tmp/.lisa_dest_key"
+        if not src_node.tools[Ls].path_exists(path=tmp_key_name, sudo=False):
+            self._log.debug("copying ssh key to src node")
+            src_node.shell.copy(
+                		local_path=PurePath(dest_key),
+                                node_path=PurePath(tmp_key_name)
+            )
+            assert src_node.tools[Ls].path_exists(tmp_key_name), "copy failed"
+            src_node.tools[Chmod].chmod(path=tmp_key_name, permission="0600",  sudo=True)
 
+        self._log.debug(f"scp command attributes:\n"
+                        f"destination user: {dest_user}\n"
+                        f"destination IPadress: {dest_addr}\n"
+                        f"destination admin_key: {dest_key}\n"
+                        f"location of key on src: {tmp_key_name}\n"
+        )
+        # Prepare scp command to run on src_node, pushing to dest_node
         scp_opts = "-r" if recurse else ""
         scp_cmd = (
             f"scp {scp_opts} -i {tmp_key_name} -o StrictHostKeyChecking=no "
-            f"{src_user}@{src_address}:{src_path_str} {dest_path}"
+            f"{src_path_str} {dest_user}@{dest_addr}:{dest_path_str}"
         )
-        scp_result = dest_node.execute(
+        self._log.debug(f"scp command: {scp_cmd}")
+        scp_process = src_node.execute_async(
             scp_cmd,
             shell=True,
-            sudo=False,
+            sudo=False
             # expected_exit_code=0,
             # execpected_exit_code_failure_message="scp file transfer failed"
         )
 
-        if scp_result.exit_code is None:
-            scp_result = dest_node.execute(
-                f"echo $?",
-                shell=True,
-                sudo=False,
-            )
+        scp_result = scp_process.wait_result()
+        assert scp_result, "result of scp can't None"
 
         return scp_result.exit_code
 
