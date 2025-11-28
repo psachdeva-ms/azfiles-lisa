@@ -54,10 +54,10 @@ class KernelSourcePackager(DeploymentTransformer):
         ]
 
     def _information(self, package_dir: str, package_paths: str) -> Dict[str, Any]:
-        image = False
-        headers = False
-        libc_dev = False
-        packages = []
+        image: bool = False
+        headers: bool = False
+        libc_dev: bool = False
+        packages: List[str] = []
         for package_name in package_paths:
             if not package_name.endswith(".deb"):
                 continue;
@@ -136,7 +136,7 @@ class KernelSourcePackager(DeploymentTransformer):
             raise Exception("No images retrieved. kernel_source_packager_error")
         if ret['necessary_packages_exist']:
             cache_dir: str = ret['directory']
-            package_names: [str] = ret['packages']
+            package_names: List[str] = ret['packages']
             results = {
                 self._package_dir: cache_dir,
                 self._packages: package_names,
@@ -195,7 +195,7 @@ class KernelSourcePackager(DeploymentTransformer):
         metadata: Optional[Dict[str, Any]] = None,
         commit_id: Optional[str] = None,
         max_cache_size: int = 100,
-    ) -> Optional[List[str]]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Updates the kernel cache JSON file.
         1. If metadata is provided, creates a new entry at the top (removes last if full).
@@ -222,9 +222,10 @@ class KernelSourcePackager(DeploymentTransformer):
         package_paths = None
 
         if metadata:
-            # Remove any existing entry with the same commit_id
+            # Remove [any existing entry with the same commit_id
+            commit_id = metadata.get("commit_id")
             cache = [entry for entry in cache if entry.get("commit_id") !=
-                     metadata.get("commit_id")]
+                     commit_id]
             # Set last_used_time
             metadata["last_used_time"] = now
             # Insert new entry at the top
@@ -272,7 +273,7 @@ class KernelSourcePackager(DeploymentTransformer):
 
 
     def _build_and_package(self, source_installer, commit_id: str,
-                           kernel_version: str) -> Dict[str, Any]:
+                           kernel_version: str) -> Optional[Dict[str, Any]]:
         """
         Builds the kernel from source (using already cloned and checked-out code),
         creates a deb package, collects metadata, moves the package to a commit-id-named folder,
