@@ -23,7 +23,7 @@ variable:
   - name: vhd
     value: ""
   - name: builder_vm_size
-    value: "Standard_B32als_v2"
+    value: "Standard_D32alds_v6"
   - name: test_vm_name
     value: ""
   - name: vm_size
@@ -63,6 +63,8 @@ variable:
     value: "4.194.0.0/16"
   - name: kernel_build
     value: false
+  - name: build_vm_name
+    value: ""
   - name: build_vm_address
     value: ""
   - name: kernel_build_directory
@@ -81,11 +83,13 @@ variable:
     value: ""
   - name: test_tag
     value: ""
+  - name: test_vm_kernel_path
+    value: "/home/lisatest/kernels"
   - name: storage_account_name
+    is_case_visible: true
     value: ""
-  - name: deploy_file_shares
-    value: true
   - name: file_share_urls
+    is_case_visible: true
     value: []
   - name: enable_debpkg_transfer
     value: false
@@ -93,10 +97,10 @@ variable:
     value: ""
   - name: kernel_src_pkger_packages
     value: []
-  - name: file_uploader_local_path
+  - name: file_transfer_local_path
     value: ""
-  - name: file_uploader_uploaded_files
-    value: ""
+  - name: file_transfer_transferred_files
+    value: []
 concurrency: $(concurrency)
 notifier:
   - type: html
@@ -143,9 +147,11 @@ transformer:
         shared_gallery: $(shared_gallery)
         community_gallery_image: $(community_gallery_image)
         vhd: $(vhd)
+        name: $(build_vm_name)
         location: $(location)
         vm_size: $(builder_vm_size)
         osdisk_size_in_gb: 128
+      # core_count: 16
     enabled: $(builder_deploy)
     keep_environment: $(keep_build_env)
     rename:
@@ -165,33 +171,11 @@ transformer:
       ref: $(kernel_repo_tag)
       repo: $(kernel_repo)
     enabled: $(kernel_build)
-  - type: azure_storage_deploy
-    phase: environment_connected
-    enabled: $(deploy_file_shares)
-    storage_account_name: $(storage_account_name)
-    resource_group_name: $(resource_group_name)
-    location: $(location)
-    sku: Premium_LRS
-    kind: FileStorage
-    enable_https_traffic_only: true
-    allow_shared_key_access: true
-    allow_blob_public_access: false
-    files:
-      - type: file_share
-        file_share_name: test-share
-        file_share_protocols: SMB
-        file_share_quota_in_gb: 100
-      - type: file_share
-        file_share_name: scratch-share
-        file_share_protocols: SMB
-        file_share_quota_in_gb: 100
-    rename:
-      azure_storage_deploy_file_share_urls: file_share_urls
-  - type: file_uploader
+  - type: file_transfer
     phase: environment_connected
     enabled: $(enable_debpkg_transfer)
     source: $(kernel_src_pkger_package_dir)
-    destination: "/home/lisatest/kernels"
+    destination: $(test_vm_kernel_path)
     files: $(kernel_src_pkger_packages)
     try_scp: true
     source_node:
@@ -199,14 +183,14 @@ transformer:
       user: "lisatest"
       address: $(build_vm_address)
       private_key_file: $(admin_private_key_file)
-    local_path: $(file_uploader_local_path)
+    local_path: $(file_transfer_local_path)
   - type: deb_package_installer
     depends_on:
-      - file_uploader
+      - file_transfer
     enabled: $(enable_debpkg_transfer)
-    directory: "/home/lisatest/kernels"
+    directory: $(test_vm_kernel_path)
     phase: environment_connected
-    files: $(file_uploader_uploaded_files)
+    files: $(file_transfer_transferred_files)
     reboot: true
 testcase:
   - criteria:

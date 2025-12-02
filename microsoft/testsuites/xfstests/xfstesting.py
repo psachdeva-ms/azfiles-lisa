@@ -200,6 +200,7 @@ class Xfstesting(TestSuite):
         global _default_smb_mount, _default_smb_excluded_tests
         global _default_smb_testcases, _scratch_folder, _test_folder
         global _test_share_url, _scratch_share_url
+        global _default_storage_account_name
 
         node = kwargs["node"]
         if isinstance(node.os, Oracle) and (node.os.information.version <= "9.0.0"):
@@ -214,10 +215,15 @@ class Xfstesting(TestSuite):
         _default_smb_testcases = variables.get("smb_testcases") or _default_smb_testcases
 
         # check if the file endpoints are already provided
+
         _file_share_urls = variables.get("file_share_urls", [])
         if len(_file_share_urls) == 2:
             _test_share_url, _scratch_share_url = _file_share_urls
-
+        else:
+            _default_storage_account_name = variables.get(
+                				"storage_account_name",
+                                        	"",
+            )
         _scratch_folder = variables.get("scratch_folder", _scratch_folder)
         _test_folder = variables.get("test_folder", _test_folder)
 
@@ -587,6 +593,8 @@ class Xfstesting(TestSuite):
     def verify_azure_file_share(
         self, log: Logger, log_path: Path, result: TestResult
     ) -> None:
+        global _test_share_url, _scratch_share_url
+        global _default_storage_account_name
         environment = result.environment
         assert environment, "fail to get environment from testresult"
         assert isinstance(environment.platform, AzurePlatform)
@@ -596,36 +604,38 @@ class Xfstesting(TestSuite):
                 node.os, "current distro is not enabled with cifs module."
             )
         xfstests = self._install_xfstests(node)
-        azure_file_share = node.features[AzureFileShare]
-        random_str = generate_random_chars(string.ascii_lowercase + string.digits, 10)
-        file_share_name = f"lisa{random_str}fs"
-        scratch_name = f"lisa{random_str}scratch"
-        mount_opts = (
-            f"-o {_default_smb_mount},"  # noqa: E231
-            f"credentials=/etc/smbcredentials/lisa.cred"  # noqa: E231
-        )
+
+
         if not _test_share_url or not _scratch_share_url:
+            azure_file_share = node.features[AzureFileShare]
+            if _default_storage_account_name:
+                azure_file_share._storage_account_name = \
+                    _default_storage_account_name
+            random_str = generate_random_chars(string.ascii_lowercase + string.digits, 10)
+            test_name = f"lisa{random_str}test"
+            scratch_name = f"lisa{random_str}scratch"
             fs_url_dict: Dict[str, str] = _deploy_azure_file_share(
                 node=node,
                 environment=environment,
                 names={
-                    _test_folder: file_share_name,
+                    _test_folder: test_name,
                     _scratch_folder: scratch_name,
                 },
                 azure_file_share=azure_file_share,
             )
-        else:
-            # If the file share URLs are already provided, use them directly.
-            fs_url_dict = {
-                file_share_name: _test_share_url,
-                scratch_name: _scratch_share_url,
-            }
+            _test_share_url = fs_url_dict[test_name]
+            _scratch_share_url = fs_url_dict[scratch_name]
+
+        mount_opts = (
+            f"-o {_default_smb_mount},"  # noqa: E231
+            f"credentials=/etc/smbcredentials/lisa.cred"  # noqa: E231
+        )
 
         # Create Xfstest config
         xfstests.set_local_config(
-            scratch_dev=fs_url_dict[scratch_name],
+            scratch_dev=_scratch_share_url,
             scratch_mnt=_scratch_folder,
-            test_dev=fs_url_dict[file_share_name],
+            test_dev=_test_share_url,
             test_folder=_test_folder,
             file_system="cifs",
             test_section="cifs",
