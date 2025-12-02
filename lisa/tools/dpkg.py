@@ -1,63 +1,40 @@
+from typing import cast
+
 from lisa.executable import Tool
-from pathlib import PurePath
-from typing import List, Optional
+
 
 class Dpkg(Tool):
     @property
     def command(self) -> str:
         return "dpkg"
 
-    def is_valid_package(self, package_path: str) -> bool:
+    @property
+    def can_install(self) -> bool:
+        return True
+
+    def install(self) -> bool:
+        from lisa.operating_system import Posix
+
+        posix_os: Posix = cast(Posix, self.node.os)
+        package_name = "dpkg"
+        posix_os.install_packages(package_name)
+        return self._check_exists()
+
+    def is_valid_package(self, file: str) -> bool:
         # Check if the file is a valid deb package
         result = self.run(
-            f"--info {package_path}",
-            sudo=True,
-            shell=True,
-            no_error_log=True,
-            no_info_log=True,
+            f"--info {file}",
         )
         return result.exit_code == 0
 
-    def install_local_package(self, package_path: str, force: bool = True) -> None:
+    def install_local_package(self, file: str, force: bool = True) -> None:
         # Install a single deb package
-        options = "-i"
+        parameters = f"-i {file}"
         if force:
-            options += " --force-all"
+            parameters = f" --force-all {parameters}"
         self.run(
-            f"{options} {package_path}",
+            parameters,
             sudo=True,
-            shell=True,
+            expected_exit_code=0,
+            expected_exit_code_failure_message=(f"failed to install {file}"),
         )
-
-    def install_packages_in_directory(self, directory_path: str, force: bool = True) -> Optional[int]:
-        # Install all .deb packages in the given directory
-        options = "-i"
-        if force:
-            options += " --force-all"
-        install_result = self.run(
-            f"{options} {directory_path}/*.deb",
-            sudo=True,
-            shell=True,
-        )
-        # Optionally fix dependencies
-        self.node.execute(
-            "apt-get -f install -y",
-            sudo=True,
-            shell=True,
-        )
-
-        return install_result.exit_code
-
-    def validate_all_debs_in_directory(self, directory_path: str) -> List[str]:
-        # Returns a list of invalid .deb files (empty if all are valid)
-        result = self.node.execute(
-            f"ls {directory_path}/*.deb",
-            shell=True,
-            sudo=False,
-        )
-        deb_files = result.stdout.strip().splitlines()
-        invalid_files = []
-        for deb in deb_files:
-            if not self.is_valid_package(deb):
-                invalid_files.append(deb)
-        return invalid_files
