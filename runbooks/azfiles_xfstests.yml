@@ -13,7 +13,7 @@ variable:
   - name: keep_test_env
     value: "failed"
   - name: resource_group_name
-    value: ""
+    value: "azfiles-lisa-rg"
   - name: marketplace_image
     value: "Canonical:ubuntu-24_04-lts:server:latest"
   - name: shared_gallery
@@ -54,6 +54,9 @@ variable:
   - name: smb_mount_opts
     is_case_visible: true
     value: ""
+  - name: addition_mount_opts
+    is_case_visible: true
+    value: ""
   - name: smb_testcases
     is_case_visible: true
     value: ""
@@ -64,7 +67,7 @@ variable:
   - name: kernel_build
     value: false
   - name: build_vm_name
-    value: ""
+    value: "lisa-builder"
   - name: build_vm_address
     value: ""
   - name: kernel_build_directory
