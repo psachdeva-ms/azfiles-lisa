@@ -38,14 +38,14 @@ class XfstestsResult:
 class Xfstests(Tool):
     """
     Xfstests - Filesystem testing tool.
-    installed (default) from https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git
+    installed (default) from https://github.com/kdave/xfstests.git
     Mirrored daily from kernel.org repository.
     For details, refer to https://github.com/kdave/xfstests/blob/master/README
     """
 
     # This is the default repo and branch for xfstests.
     # Override this via _install method if needed.
-    repo = "https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git"
+    repo = "https://github.com/kdave/xfstests.git"
     branch = "master"
     # This hash table contains recommended tags for different OS versions
     # based on our findings that are known to build without issues.
@@ -133,6 +133,7 @@ class Xfstests(Tool):
         "linux-headers-generic",
         "sqlite3",
         "libgdbm-compat-dev",
+        "pkg-config",
     ]
     fedora_dep = [
         "btrfs-progs",
@@ -224,7 +225,7 @@ class Xfstests(Tool):
     def command(self) -> str:
         # The command is not used
         # _check_exists is overwritten to check tool existence
-        return str(self.get_tool_path(use_global=True) / "xfstests-dev" / "check")
+        return str(self.get_tool_path(use_global=True) / "xfstests" / "check")
 
     @property
     def can_install(self) -> bool:
@@ -328,7 +329,7 @@ class Xfstests(Tool):
 
     def _initialize(self, *args: Any, **kwargs: Any) -> None:
         super()._initialize(*args, **kwargs)
-        self._code_path = self.get_tool_path(use_global=True) / "xfstests-dev"
+        self._code_path = self.get_tool_path(use_global=True) / "xfstests"
 
     def _install_dep(self) -> None:
         """
@@ -437,23 +438,24 @@ class Xfstests(Tool):
         The test users are added to the node using _add_test_users method.
         This method allows you to specify custom repo and branch for xfstest.
         Else this defaults to:
-        https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git:master
+        https://github.com/kdave/xfstests.git:master
         Example:
         xfstest._install(
                          branch="master",
-                         repo="https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git"
+                         repo="https://github.com/kdave/xfstests.git"
         )
         """
         # Set the branch to the recommended tag for the OS if not provided
         if not branch:
             os_id_version = self.get_os_id_version()
             # First try full match
-            if os_id_version in self.os_recommended_tags:
+            if self.branch:
+                branch = self.branch
+            elif os_id_version in self.os_recommended_tags:
                 branch = self.os_recommended_tags[os_id_version]
             else:
                 # Try partial match - check if any key is a prefix of os_id_version
                 # example: "Ubuntu_20.04" match with "Ubuntu_20" from hash table.
-                branch = self.branch  # default fallback
                 for key in self.os_recommended_tags:
                     if os_id_version.startswith(key):
                         branch = self.os_recommended_tags[key]
@@ -466,7 +468,7 @@ class Xfstests(Tool):
         git = self.node.tools[Git]
         git.clone(url=repo, cwd=tool_path, ref=branch)
         make = self.node.tools[Make]
-        code_path = tool_path.joinpath("xfstests-dev")
+        code_path = tool_path.joinpath("xfstests")
 
         self.node.tools[Rm].remove_file(str(code_path / "src" / "splice2pipe.c"))
         self.node.tools[Sed].substitute(

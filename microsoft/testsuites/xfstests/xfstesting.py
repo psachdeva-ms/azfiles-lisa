@@ -201,6 +201,7 @@ class Xfstesting(TestSuite):
         global _default_smb_testcases, _scratch_folder, _test_folder
         global _test_share_url, _scratch_share_url
         global _default_storage_account_name
+        global xfstests_repo, xfstests_branch
 
         node = kwargs["node"]
         if isinstance(node.os, Oracle) and (node.os.information.version <= "9.0.0"):
@@ -214,6 +215,9 @@ class Xfstesting(TestSuite):
         _default_smb_excluded_tests = variables.get("smb_excluded_tests") or _default_smb_excluded_tests
         _default_smb_testcases = variables.get("smb_testcases") or _default_smb_testcases
 
+        addition_mount_opts = variables.get("addition_mount_opts", "")
+        if addition_mount_opts:
+            _default_smb_mount = f"{_default_smb_mount},{addition_mount_opts}"
         # check if the file endpoints are already provided
 
         _file_share_urls = variables.get("file_share_urls", [])
@@ -224,8 +228,11 @@ class Xfstesting(TestSuite):
                 				"storage_account_name",
                                         	"",
             )
-        _scratch_folder = variables.get("scratch_folder", _scratch_folder)
-        _test_folder = variables.get("test_folder", _test_folder)
+        _scratch_folder = variables.get("scratch_folder") or _scratch_folder
+        _test_folder = variables.get("test_folder") or _test_folder
+
+        xfstests_repo = variables.get("xfstests_repo", "");
+        xfstests_branch = variables.get("xfstests_branch", "");
 
     @TestCaseMetadata(
         description="""
@@ -755,6 +762,12 @@ class Xfstesting(TestSuite):
         )
 
     def _install_xfstests(self, node: Node) -> Xfstests:
+        if xfstests_repo:
+            Xfstests.repo = xfstests_repo
+
+        if xfstests_branch:
+            Xfstests.branch = xfstests_branch
+
         try:
             xfstests = node.tools[Xfstests]
             return xfstests
