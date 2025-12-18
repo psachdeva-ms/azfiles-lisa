@@ -14,6 +14,7 @@ class FileShareServiceSchema(schema.TypedSchema):
     file_share_protocols: str = "SMB"
     file_share_quota_in_gb: int = 100
 
+
 @dataclass_json
 @dataclass
 class StorageDeploymentTransformerSchema(schema.Transformer):
@@ -64,11 +65,19 @@ class StorageDeploymentTransformer(DeploymentTransformer):
         # 2. Service-specific logic based on which schema is present
         if runbook.files:
             for file_share in runbook.files:
-                files_transformer = FilesTransformer(runbook=file_share, node=self._node)
-                files_result = files_transformer._internal_run()
-                # Expecting files_result to be {"file_share_url": ...}
-                if "file_share_url" in files_result:
-                    file_share_urls.append(files_result["file_share_url"])
+                share_url = get_or_create_file_share(
+                    credential=platform.credential,
+                    subscription_id=platform.subscription_id,
+                    cloud=platform.cloud,
+                    account_name=runbook.storage_account_name,
+                    file_share_name=file_share.file_share_name,
+                    resource_group_name=runbook.resource_group_name,
+                    log=log,
+                    protocols=file_share.file_share_protocols,
+                    quota_in_gb=file_share.file_share_quota_in_gb,
+                )
+
+                file_share_urls.append(share_url)
         return {"file_share_urls": file_share_urls}
 
 class FilesTransformer(DeploymentTransformer):

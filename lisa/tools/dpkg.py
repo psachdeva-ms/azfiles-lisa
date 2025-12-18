@@ -1,6 +1,6 @@
 from lisa.executable import Tool
 from pathlib import PurePath
-from typing import List
+from typing import List, Optional
 
 class Dpkg(Tool):
     @property
@@ -29,12 +29,12 @@ class Dpkg(Tool):
             shell=True,
         )
 
-    def install_packages_in_directory(self, directory_path: str, force: bool = True) -> None:
+    def install_packages_in_directory(self, directory_path: str, force: bool = True) -> Optional[int]:
         # Install all .deb packages in the given directory
         options = "-i"
         if force:
             options += " --force-all"
-        self.run(
+        install_result = self.run(
             f"{options} {directory_path}/*.deb",
             sudo=True,
             shell=True,
@@ -45,6 +45,8 @@ class Dpkg(Tool):
             sudo=True,
             shell=True,
         )
+
+        return install_result.exit_code
 
     def validate_all_debs_in_directory(self, directory_path: str) -> List[str]:
         # Returns a list of invalid .deb files (empty if all are valid)

@@ -71,7 +71,12 @@ class DEBPackageInstallerTransformer(PackageInstaller):
                 return {}
             # Install all .deb files in the directory
             self._log.info(f"Installing all .deb packages in {directory}")
-            self._node.tools[Dpkg].install_packages_in_directory(str(directory))
+            result = self._node.tools[Dpkg].install_packages_in_directory(
+                str(directory))
+            if result is not None and result == 0:
+                self._log.info(f"{deb_files} installed")
+            else:
+                self._log.info(f"{deb_files} not installed")
         else:
             self._log.info(f"Installing packages: {runbook.files}")
             success = []
@@ -102,6 +107,7 @@ class DEBPackageInstallerTransformer(PackageInstaller):
                 self._log.error(f"Reboot failed: {e}")
 
         # Log kernel version after installation/reboot
+        uname = self._node.tools[Uname]
         kernel_after = uname.get_linux_information().kernel_version_raw
         self._log.info(f"Kernel version after installation: {kernel_after}")
 

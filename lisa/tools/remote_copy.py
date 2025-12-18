@@ -10,9 +10,10 @@ from lisa.tools.ls import Ls
 from lisa.tools.mkdir import Mkdir
 from lisa.tools.rm import Rm
 from lisa.tools.whoami import Whoami
+from lisa.util import constants
 
 if TYPE_CHECKING:
-    from lisa.node import Node
+    from lisa.node import Node, RemoteNode
 
 
 class RemoteCopy(Tool):
@@ -240,42 +241,52 @@ class RemoteCopy(Tool):
         dest_node,
         dest_path: PurePath,
         recurse: bool = False,
-    ) -> None:
+    ) -> int:
         """
         Copy a file or directory from src_node to dest_node using scp.
         The scp command is executed on the src_node, pushing to dest_node.
         Only key-based authentication is supported.
         """
         # Ensure src_path and dest_path are strings
-        src_path = str(src_path)
-        dest_path = str(dest_path)
+        src_path_str = str(src_path)
+        dest_path_str = str(dest_path)
 
         # Prepare scp command to run on src_node, pushing to dest_node
-        dest_user = dest_node.connection_info.username
-        dest_addr = dest_node.connection_info.address
-        dest_key = dest_node.connection_info.private_key_file
+        src_connection = src_node.connection_info
+        src_user = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_USERNAME]
+        src_address = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_ADDRESS]
+        ssh_key = src_connection[constants.ENVIRONMENTS_NODES_REMOTE_PRIVATE_KEY_FILE]
+
+        dest_connection = dest_node.connection_info
+        assert ssh_key
 
         # Copy the dest_key to src_node (if not already present)
         # Use a temporary file for the key on src_node
-        import posixpath
-        import uuid
 
-        tmp_key_name = f"/tmp/.lisa_dest_key_{uuid.uuid4().hex}"
-        src_node.shell.copy_to_remote(dest_key, tmp_key_name)
+        tmp_key_name = f"/tmp/.lisa_dest_key"
+        self.copy_to_remote(PurePath(ssh_key), PurePath(tmp_key_name))
 
         scp_opts = "-r" if recurse else ""
         scp_cmd = (
             f"scp {scp_opts} -i {tmp_key_name} -o StrictHostKeyChecking=no "
-            f"{src_path} {dest_user}@{dest_addr}:{dest_path}"
+            f"{src_user}@{src_address}:{src_path_str} {dest_path}"
         )
-        src_node.shell.run(
+        scp_result = dest_node.execute(
             scp_cmd,
             shell=True,
             sudo=False,
+            # expected_exit_code=0,
+            # execpected_exit_code_failure_message="scp file transfer failed"
         )
 
-        # Clean up the temporary key file
-        src_node.shell.run(f"rm -f {tmp_key_name}", shell=True, sudo=True)
+        if scp_result.exit_code is None:
+            scp_result = dest_node.execute(
+                f"echo $?",
+                shell=True,
+                sudo=False,
+            )
+
+        return scp_result.exit_code
 
 
 class WindowsRemoteCopy(RemoteCopy):
