@@ -58,6 +58,9 @@ variable:
   - name: smb_mount_opts
     is_case_visible: true
     value: ""
+  - name: addition_mount_opts
+    is_case_visible: true
+    value: ""
   - name: smb_testcases
     is_case_visible: true
     value: ""

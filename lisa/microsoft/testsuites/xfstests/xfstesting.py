@@ -212,9 +212,16 @@ class Xfstesting(TestSuite):
         # check for overrides. pass variables with property case_visible: True
         # in runbook
         _default_smb_mount = variables.get("smb_mount_opts") or _default_smb_mount
-        _default_smb_excluded_tests = variables.get("smb_excluded_tests") or _default_smb_excluded_tests
-        _default_smb_testcases = variables.get("smb_testcases") or _default_smb_testcases
+        _default_smb_excluded_tests = (
+            variables.get("smb_excluded_tests") or _default_smb_excluded_tests
+        )
+        _default_smb_testcases = (
+            variables.get("smb_testcases") or _default_smb_testcases
+        )
 
+        addition_mount_opts = variables.get("addition_mount_opts", "")
+        if addition_mount_opts:
+            _default_smb_mount = f"{_default_smb_mount},{addition_mount_opts}"
         # check if the file endpoints are already provided
 
         _file_share_urls = variables.get("file_share_urls", [])
@@ -222,11 +229,11 @@ class Xfstesting(TestSuite):
             _test_share_url, _scratch_share_url = _file_share_urls
         else:
             _default_storage_account_name = variables.get(
-						"storage_account_name",
-						"",
+	        "storage_account_name",
+		"",
             )
-        _scratch_folder = variables.get("scratch_folder", _scratch_folder)
-        _test_folder = variables.get("test_folder", _test_folder)
+        _scratch_folder = variables.get("scratch_folder") or _scratch_folder
+        _test_folder = variables.get("test_folder") or _test_folder
 
     @TestCaseMetadata(
         description="""
@@ -606,13 +613,15 @@ class Xfstesting(TestSuite):
             )
         xfstests = self._install_xfstests(node)
 
-
         if not _test_share_url or not _scratch_share_url:
             azure_file_share = node.features[AzureFileShare]
             if _default_storage_account_name:
-                azure_file_share._storage_account_name = \
+                azure_file_share._storage_account_name = (
                     _default_storage_account_name
-            random_str = generate_random_chars(string.ascii_lowercase + string.digits, 10)
+                )
+            random_str = generate_random_chars(
+                string.ascii_lowercase + string.digits, 10
+            )
             test_name = f"lisa{random_str}test"
             scratch_name = f"lisa{random_str}scratch"
             fs_url_dict: Dict[str, str] = _deploy_azure_file_share(
