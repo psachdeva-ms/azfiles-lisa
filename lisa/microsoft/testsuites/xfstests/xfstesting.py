@@ -202,6 +202,7 @@ class Xfstesting(TestSuite):
         global _default_smb_testcases, _scratch_folder, _test_folder
         global _test_share_url, _scratch_share_url
         global _default_storage_account_name
+        global xfstests_repo, xfstests_branch
 
         node = kwargs["node"]
         if isinstance(node.os, Oracle) and (node.os.information.version <= "9.0.0"):
@@ -234,6 +235,9 @@ class Xfstesting(TestSuite):
             )
         _scratch_folder = variables.get("scratch_folder") or _scratch_folder
         _test_folder = variables.get("test_folder") or _test_folder
+
+        xfstests_repo = variables.get("xfstests_repo", "")
+        xfstests_branch = variables.get("xfstests_branch", "")
 
     @TestCaseMetadata(
         description="""
@@ -765,6 +769,12 @@ class Xfstesting(TestSuite):
         )
 
     def _install_xfstests(self, node: Node) -> Xfstests:
+        if xfstests_repo:
+            Xfstests.repo = xfstests_repo
+
+        if xfstests_branch:
+            Xfstests.branch = xfstests_branch
+
         try:
             xfstests: Xfstests = node.tools[Xfstests]
             return xfstests

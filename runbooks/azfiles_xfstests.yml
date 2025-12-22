@@ -92,6 +92,12 @@ variable:
     value: ""
   - name: test_vm_kernel_path
     value: "/home/lisatest/kernels"
+  - name: xfstests_repo
+    is_case_visible: true
+    value: ""
+  - name: xfstests_branch
+    is_case_visible: true
+    value: ""
   - name: storage_account_name
     is_case_visible: true
     value: ""

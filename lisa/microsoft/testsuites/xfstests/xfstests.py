@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -228,7 +229,10 @@ class Xfstests(Tool):
     def command(self) -> str:
         # The command is not used
         # _check_exists is overwritten to check tool existence
-        return str(self.get_tool_path(use_global=True) / "xfstests-dev" / "check")
+        return (
+            f"{str(self.get_tool_path(use_global=True))}/"
+            f"{self.get_xfstests_repo_name()}/check"
+        )
 
     @property
     def can_install(self) -> bool:
@@ -332,7 +336,9 @@ class Xfstests(Tool):
 
     def _initialize(self, *args: Any, **kwargs: Any) -> None:
         super()._initialize(*args, **kwargs)
-        self._code_path = self.get_tool_path(use_global=True) / "xfstests-dev"
+        self._code_path = (
+            self.get_tool_path(use_global=True) / self.get_xfstests_repo_name()
+        )
 
     def _install_dep(self) -> None:
         """
@@ -470,7 +476,7 @@ class Xfstests(Tool):
         git = self.node.tools[Git]
         git.clone(url=repo, cwd=tool_path, ref=branch)
         make = self.node.tools[Make]
-        code_path = tool_path.joinpath("xfstests-dev")
+        code_path = tool_path.joinpath(self.get_xfstests_repo_name())
 
         self.node.tools[Rm].remove_file(str(code_path / "src" / "splice2pipe.c"))
         self.node.tools[Sed].substitute(
@@ -484,6 +490,10 @@ class Xfstests(Tool):
 
     def get_xfstests_path(self) -> PurePath:
         return self._code_path
+
+    def get_xfstests_repo_name(self) -> str:
+        repo = self.repo
+        return os.path.basename(repo.rstrip("/")).removesuffix(".git")
 
     def set_local_config(
         self,
