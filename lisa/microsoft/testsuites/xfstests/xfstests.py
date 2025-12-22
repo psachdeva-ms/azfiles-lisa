@@ -136,6 +136,7 @@ class Xfstests(Tool):
         "linux-headers-generic",
         "sqlite3",
         "libgdbm-compat-dev",
+        "pkg-config",
     ]
     fedora_dep = [
         "btrfs-progs",

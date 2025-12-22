@@ -1,6 +1,6 @@
 name: $(test_name)
 include:
-  - path: ../microsoft/runbook/tiers/tier.yml
+  - path: ../lisa/microsoft/runbook/tiers/tier.yml
 variable:
   - name: test_name
     value: "azurefiles_xfstests"
@@ -17,7 +17,7 @@ variable:
   - name: builder_resource_group_name
     value: ""
   - name: resource_group_name
-    value: ""
+    value: "azfiles-lisa-rg"
   - name: marketplace_image
     value: "Canonical:ubuntu-24_04-lts:server:latest"
   - name: shared_gallery
@@ -64,11 +64,11 @@ variable:
   - name: azcopy_path
     value: ""
   - name: source_address_prefix
-    value: "4.194.0.0/16"
+    value: ""
   - name: kernel_build
     value: false
   - name: build_vm_name
-    value: ""
+    value: "lisa-builder"
   - name: build_vm_address
     value: ""
   - name: kernel_build_directory
