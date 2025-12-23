@@ -1,24 +1,27 @@
+import json
+import os
+import time
 from datetime import datetime
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
-import json
-import os
-from typing import Dict, Any, Optional, List, Type
+from pathlib import Path, PurePath
+from typing import Dict, Any, Optional, List, Type, cast
 
 from lisa import schema
 # from lisa.transformer import Transformer
-from lisa.transformers.deployment_transformer import (
+from .deployment_transformer import (
     DeploymentTransformer,
     DeploymentTransformerSchema,
 )
-from lisa.transformers.kernel_source_installer import (
+from .kernel_source_installer import (
     BaseLocation,
     BaseLocationSchema,
     SourceInstaller,
-    SourceInstallerSchema
+    SourceInstallerSchema,
+    RepoLocation,
+    RepoLocationSchema,
+    _get_code_path
 )
-from lisa.util import subclasses
-from pathlib import PurePath
 
 @dataclass_json()
 @dataclass
@@ -282,9 +285,6 @@ class KernelSourcePackager(DeploymentTransformer):
         node = self._node
         runbook: KernelSourcePackagerSchema = self.runbook
         parent_dir = str(self._code_path.parent)
-        # Clean all files in parent directory before build
-        node.execute(f"rm -f {parent_dir}/*", shell=True)
-        # ...rest of your build and packaging logic...
 
         # 1. Install required build tools (reuse SourceInstaller)
         source_installer._install_build_tools(node)
@@ -316,19 +316,23 @@ class KernelSourcePackager(DeploymentTransformer):
             code_path=self._code_path,
             kconfig_file=kconfig_file,
             kernel_version=kernel_version,
-            skip_plain_make=True,  # Skip plain make, we will use make deb-pkg
         )
 
+        start_time = time.time()
         # 5. Package the kernel as a DEB package
         make = node.tools["Make"]
         make.make(arguments="bindeb-pkg", cwd=self._code_path, timeout=60*60*2)
 
         # 6. Find the generated .deb package(s)
-        deb_dir = str(self._code_path.parent)
-        result = node.execute(f'ls {deb_dir}/*.deb', shell=True)
+        deb_dir = self._code_path.parent
+        result = node.execute(f"find {str(deb_dir)} -maxdepth 1 -type f"
+                              f" -newermt @{int(start_time)} -printf '%f\n'")
+
         if result.exit_code != 0:
             raise Exception(f"Failed to list .deb files in {deb_dir}: {result.stderr}")
-        deb_files = [os.path.basename(line.strip()) for line in result.stdout.splitlines() if line.strip().endswith(".deb")]
+        deb_files = [os.path.basename(line.strip())
+                     for line in result.stdout.splitlines()]
+
         if not deb_files:
             raise Exception("No .deb package was generated in the kernel build process.")
 
