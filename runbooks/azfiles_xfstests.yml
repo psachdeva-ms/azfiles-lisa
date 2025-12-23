@@ -74,22 +74,22 @@ variable:
     value: "lisa-builder"
   - name: build_vm_address
     value: ""
-  - name: kernel_build_directory
+  - name: upstream_tree_dir
     value: "/mnt/code"
-  - name: kernel_repo
-    value: "https://github.com/torvalds/linux.git"
-  - name: kernel_repo_tag
+  - name: upstream_repo
+    value: ""
+  - name: upstream_repo_ref
     value: "master"
-  - name: kernel_package_destination
-    value: "/media/packages"
-  - name: patch_repo
+  - name: src_dir_rel
     value: ""
-  - name: patch_ref
+  - name: src_repo
     value: ""
-  - name: patch_file_pattern
+  - name: src_repo_ref
     value: ""
-  - name: test_tag
+  - name: src_local_branch
     value: ""
+  - name: kernel_pkg_dest
+    value: "/default"
   - name: test_vm_kernel_path
     value: "/home/lisatest/kernels"
   - name: xfstests_repo
@@ -176,13 +176,17 @@ transformer:
       address: $(build_vm_address)
       private_key_file: $(admin_private_key_file)
     use_cache: true
-    cache_destination: "/default"
+    cache_destination: $(kernel_pkg_dest)
     location:
-      type: repo
-      path: "/mnt/code"
+      type: worktree
+      path: $(upstream_tree_dir)
       cleanup_code: false
-      ref: $(kernel_repo_tag)
-      repo: $(kernel_repo)
+      # repo: $(upstream_repo)
+      ref: $(upstream_repo_ref)
+      worktree_name: $(src_dir_rel)
+      worktree_repo: $(src_repo)
+      worktree_ref: $(src_repo_ref)
+      worktree_local_branch: $(src_local_branch)
     enabled: $(kernel_build)
   - type: file_transfer
     phase: environment_connected
