@@ -508,7 +508,7 @@ class RepoLocation(BaseLocation):
         # create and give permission on code folder if required
         if not self._node.shell.exists(code_path):
             self._node.execute(f"mkdir -p {code_path}", sudo=True)
-            self._node.execute(f"chmod 0755 {code_path}", sudo=True)
+            self._node.execute(f"chmod 0777 {code_path}", sudo=True)
 
         self._log.info(f"cloning code from {runbook.repo} to {code_path}...")
         git = self._node.tools[Git]
