@@ -118,6 +118,16 @@ concurrency: $(concurrency)
 notifier:
   - type: html
   - type: env_stats
+  - type: console
+  - type: lsg_database
+    server: ""
+    database: ""
+    username: ""
+    password: ""
+    enabled: true
+    azure_credential:
+      type: default
+      allow_all_tenants: true
 platform:
   - type: azure
     admin_private_key_file: $(admin_private_key_file)
