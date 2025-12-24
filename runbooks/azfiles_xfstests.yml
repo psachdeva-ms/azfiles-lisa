@@ -222,4 +222,16 @@ transformer:
 testcase:
   - criteria:
       name: $(test_case_name)
-#      priority: 5
+    #   priority: 0
+    # enabled: true
+
+# combinator:
+#   type: batch
+#   items:
+#     - smb_testcases: "generic/001"
+#       addition_mount_opts: ""
+#       test_vm_name: "psachdeva-cifstest-vm"
+#     - smb_testcases: "cifs/002"
+#       addition_mount_opts: "closetimeo=30"
+#       test_vm_name: "psachdeva-cifs-tester"
+#       test_env_deploy: true
