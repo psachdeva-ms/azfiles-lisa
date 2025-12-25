@@ -37,6 +37,7 @@ from .dmsetup import Dmsetup
 from .dnsmasq import Dnsmasq
 from .docker import Docker
 from .docker_compose import DockerCompose
+from .dpkg import Dpkg
 from .echo import Echo
 from .efibootmgr import EfiBootMgr
 from .ethtool import Ethtool
