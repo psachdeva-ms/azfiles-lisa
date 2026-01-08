@@ -428,9 +428,13 @@ class Xfstesting(TestSuite):
     )
 
     def before_case(self, log: Logger, **kwargs: Any) -> None:
+        global xfstests_repo, xfstests_branch
         node = kwargs["node"]
         if isinstance(node.os, Oracle) and (node.os.information.version <= "9.0.0"):
             self.excluded_tests = self.excluded_tests + " btrfs/299"
+
+        xfstests_repo = variables.get("xfstests_repo", "")
+        xfstests_branch = variables.get("xfstests_branch", "")
 
     @TestCaseMetadata(
         description="""
@@ -1237,6 +1241,12 @@ class Xfstesting(TestSuite):
         )
 
     def _install_xfstests(self, node: Node) -> Xfstests:
+        if xfstests_repo:
+            Xfstests.repo = xfstests_repo
+
+        if xfstests_branch:
+            Xfstests.branch = xfstests_branch
+
         try:
             xfstests: Xfstests = node.tools[Xfstests]
             return xfstests
