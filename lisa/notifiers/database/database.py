@@ -37,6 +37,7 @@ class LsgDatabase(DatabaseMixin, notifier.Notifier):  # type: ignore
         notifier.Notifier.__init__(self, runbook)
         self._test_project = get_test_project(runbook)
         self._test_cases = get_test_cases(runbook)
+        self._test_run: Any = None
 
     @classmethod
     def type_name(cls) -> str:
@@ -119,6 +120,11 @@ class LsgDatabase(DatabaseMixin, notifier.Notifier):  # type: ignore
                 run_message.test_pass, date, test_project
             )
 
+            test_project = self._test_project.get_test_project(run_message.test_project)
+            test_pass = self._test_project.add_or_get_test_pass(
+                run_message.test_pass, date, test_project
+            )
+
             self._triage = get_triage_from_db(
                 runbook=self.database_schema,
                 test_project_name=test_project.Name,
@@ -162,9 +168,10 @@ class LsgDatabase(DatabaseMixin, notifier.Notifier):  # type: ignore
                 if failure.updated_date:
                     used_ids.append(failure.id)
 
-            session.query(self.TestFailure).filter(
-                self.TestFailure.Id.in_(used_ids)
-            ).update({"UpdatedDate": datetime.utcnow()}, synchronize_session=False)
+            if used_ids:
+                session.query(self.TestFailure).filter(
+                    self.TestFailure.Id.in_(used_ids)
+                ).update({"UpdatedDate": datetime.utcnow()}, synchronize_session=False)
         self.commit_and_close_session(session)
 
     def _process_test_result_message(self, message: TestResultMessage) -> None:
@@ -188,7 +195,8 @@ class LsgDatabase(DatabaseMixin, notifier.Notifier):  # type: ignore
                     f"cannot find matched test result to update for case "
                     f"{message.full_name}"
                 )
-            result.RunId = self._test_run.Id
+            if self._test_run:
+                result.RunId = self._test_run.Id
             result.CaseId = case_id
             result.FailureId = failure_id
             result.FinishedDate = date
