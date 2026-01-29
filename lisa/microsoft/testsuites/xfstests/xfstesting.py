@@ -44,25 +44,7 @@ _default_smb_mount = (
     "vers=3.11,dir_mode=0755,file_mode=0755,serverino,nosharesock"
     ",mfsymlinks,max_channels=4,actimeo=30"
 )
-_default_smb_excluded_tests: str = (
-    "generic/015 generic/019 generic/027 generic/034 generic/039 generic/040 "
-    "generic/041 generic/050 generic/056 generic/057 generic/059 generic/065 "
-    "generic/066 generic/067 generic/073 generic/076 generic/081 generic/083 "
-    "generic/090 generic/096 generic/101 generic/102 generic/104 generic/106 "
-    "generic/107 generic/108 generic/114 generic/204 generic/218 generic/223 "
-    "generic/224 generic/226 generic/250 generic/252 generic/269 generic/273 "
-    "generic/274 generic/275 generic/299 generic/300 generic/311 generic/312 "
-    "generic/320 generic/321 generic/322 generic/325 generic/335 generic/336 "
-    "generic/338 generic/341 generic/342 generic/343 generic/347 generic/348 "
-    "generic/361 generic/371 generic/376 generic/388 generic/405 generic/409 "
-    "generic/410 generic/411 generic/416 generic/418 generic/427 generic/441 "
-    "generic/442 generic/455 generic/456 generic/459 generic/466 generic/470 "
-    "generic/475 generic/481 generic/482 generic/483 generic/484 generic/487 "
-    "generic/488 generic/489 generic/500 generic/510 generic/512 generic/520 "
-    "generic/534 generic/535 generic/536 generic/547 generic/552 generic/557 "
-    "generic/558 generic/559 generic/560 generic/561 generic/562 generic/570 "
-    "generic/586 generic/589 generic/619 generic/620 generic/640 cifs/001"
-)
+_default_smb_excluded_tests: str = ""
 _default_smb_testcases: str = (
     "generic/001 generic/005 generic/006 generic/007 generic/010 generic/011 "
     "generic/013 generic/014 generic/024 generic/028 generic/029 generic/030 "
@@ -675,8 +657,6 @@ class Xfstesting(TestSuite):
             # run the test
             log.info("Running xfstests against azure file share")
             xfstests.run_test(
-                test_section="cifs",
-                test_group="cifs/quick",
                 log_path=log_path,
                 result=result,
                 test_cases=_default_smb_testcases,
